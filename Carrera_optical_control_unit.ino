@@ -1,4 +1,3 @@
-#include <Tone.h>
 #include "Arduino.h"
 #include "SoftwareSerial.h"
 #include "DFRobotDFPlayerMini.h"
@@ -52,7 +51,6 @@ byte driversVoices[3][5] = {
   {9,9,9,9,9}, // Voix Luigi
 };
 
-
 // prevoir une structure drivers
 /*
 struct Driver = {
@@ -83,22 +81,17 @@ unsigned long lastLaps[maxDrivers]       = {0, 0, 0}; // Temps cumulé au dernie
 unsigned long totalTime[maxDrivers]      = {0, 0, 0}; // Temps total
 int ranking[maxDrivers]                  = {};
 
-Tone tone1;
 // Set songs
 const int songBootUp     = 1;
 const int songStartRace  = 4;
 const int songLastLap    = 18;
 const int songFinishLine = 19;
+const int songCountdown  = 20;
 
 // Set inputs/outpus
 enum { RED3, RED2, RED1, GO };
 const byte startLine[4] = { 7, 8, 9, 6 };
 
-/*const int tjamR1      = 9;
-const int tjamR2      = 8;
-const int tjamR3      = 7;
-const int tjamG1      = 6;*/
-const int buzzer      = 5;
 const int startRace   = 4;
 
 void setup() {                                          //////
@@ -108,9 +101,6 @@ void setup() {                                          //////
 
   for (int i = 0; i < sizeof(startLine); i++)
     pinMode(startLine[i], OUTPUT);
-
-  //pinMode(buzzer, OUTPUT);
-  tone1.begin(buzzer);
 
   // DF player
   mySoftwareSerial.begin(9600);
@@ -202,26 +192,24 @@ void startSequenceWatch() {
       digitalWrite(startLine[RED1], HIGH);
       digitalWrite(startLine[RED2], HIGH);
       digitalWrite(startLine[RED3], HIGH);
-      digitalWrite(startLine[GO], HIGH);
+      digitalWrite(startLine[GO], LOW);
       startSequence = 2;
     } else if (startSequence == 2 && millis() - startSequenceBegin > 4000) {
-      tone1.play(NOTE_A4, 1000);
+      myDFPlayer.play(songCountdown);
+      delay(500);
       digitalWrite(startLine[RED1], LOW);
       startSequence = 3;
     } else if (startSequence == 3 && millis() - startSequenceBegin > 5500) {
-      tone1.play(NOTE_A4, 1000);
       digitalWrite(startLine[RED2], LOW);
       startSequence = 4;
-    } else if (startSequence == 4 && millis() - startSequenceBegin > 7000) {
-      tone1.play(NOTE_A4, 1000);
+    } else if (startSequence == 4 && millis() - startSequenceBegin > 6500) {
       digitalWrite(startLine[RED3], LOW);
       startSequence = 5;
-    } else if (startSequence == 5 && millis() - startSequenceBegin > 8500) {
-      tone1.play(NOTE_A6, 1000);
-      digitalWrite(startLine[GO], LOW);
+    } else if (startSequence == 5 && millis() - startSequenceBegin > 7500) {
+      digitalWrite(startLine[GO], HIGH);
       raceStartTime = millis();
       startSequence = 6;
-    } else if (startSequence == 6 && millis() - startSequenceBegin > 10000) {
+    } else if (startSequence == 6 && millis() - startSequenceBegin > 8500) {
       resetStartSequence();
     }
   }
@@ -232,7 +220,6 @@ void startSequenceWatch() {
 */
 void resetStartSequence() {
   startSequence = 0;
-  tone1.stop();
   
   for (int i = 0; i < 3; i++) {
     lapCount[i]    = 0; // Compteur de tours
@@ -256,7 +243,6 @@ void wrongStartSequenceWatch() {
     resetStartSequence();
     wrongStartSequence++;
   } else if (wrongStartSequence < 5) {
-    tone1.play(NOTE_AS3, 500);
     digitalWrite(startLine[RED1], HIGH);
     digitalWrite(startLine[RED2], HIGH);
     digitalWrite(startLine[RED3], HIGH);
@@ -267,7 +253,6 @@ void wrongStartSequenceWatch() {
     delay(500);
     wrongStartSequence++;
   } else if (wrongStartSequence >= 5) {
-    tone1.stop();
     wrongStartSequence = 0;
     wrongStartCar = 99;
   }
@@ -278,14 +263,12 @@ void wrongStartSequenceWatch() {
 */
 void finishLineSequenceWatch() {
   if (finishLineSequence < 5) {
-    tone1.play(NOTE_A6, 500);
     digitalWrite(startLine[GO], HIGH);
     delay(500);
     digitalWrite(startLine[GO], LOW);
     delay(500);
     finishLineSequence++;
   } else if (wrongStartSequence >= 5) {
-    tone1.stop();
     digitalWrite(startLine[GO], LOW);
     finishLineSequence = 0;
     wrongStartCar = 99;
