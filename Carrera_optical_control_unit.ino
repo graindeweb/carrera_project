@@ -2,9 +2,13 @@
 #include "SoftwareSerial.h"
 #include "DFRobotDFPlayerMini.h"
 
+bool debug = true;
+
 SoftwareSerial mySoftwareSerial(10, 11); // RX, TX
 DFRobotDFPlayerMini myDFPlayer;
 void printDetail(uint8_t type, int value);
+
+SoftwareSerial BTHC06(3, 4); //RX, TX
 
 /* Carrera DIGITAL 124/132/143 arduino: Infrared car detector
 
@@ -87,36 +91,50 @@ const int songStartRace  = 4;
 const int songLastLap    = 18;
 const int songFinishLine = 19;
 const int songCountdown  = 20;
+const int songFalseStart = 21;
 
 // Set inputs/outpus
 enum { RED3, RED2, RED1, GO };
 const byte startLine[4] = { 7, 8, 9, 6 };
 
-const int startRace   = 4;
+const int startRace   = 5;
+
+// BT exchanges
+int set_nb_laps = 0;
 
 void setup() {                                          //////
-  Serial.begin( 115200 );                               // initialize serial bus
+  if (debug) {
+    Serial.begin(9600);                               // initialize serial bus
+  }
+  logInfo("ENTER AT Commands:", true);
   attachInterrupt(0, infraredDetect, FALLING);          // whenever level on Pin 2 falls, start detection routine
   pinMode(startRace, INPUT_PULLUP);
 
   for (int i = 0; i < sizeof(startLine); i++)
     pinMode(startLine[i], OUTPUT);
-
+  
   // DF player
   mySoftwareSerial.begin(9600);
   if (!myDFPlayer.begin(mySoftwareSerial)) {  //Use softwareSerial to communicate with mp3.
-    Serial.println(F("Unable to begin:"));
-    Serial.println(F("1.Please recheck the connection!"));
-    Serial.println(F("2.Please insert the SD card!"));
-    while(true);
+    logInfo(F("Unable to begin:"), true);
+    logInfo(F("1.Please recheck the connection!"), true);
+    logInfo(F("2.Please insert the SD card!"), true);
+    //while(true);
   }
-  Serial.println(F("DFPlayer Mini online."));
+  logInfo(F("DFPlayer Mini online."), true);
   
-  myDFPlayer.volume(25);  //Set volume value. From 0 to 30
+  // BT
+  BTHC06.begin(9600);
+  
+  myDFPlayer.volume(5);  //Set volume value. From 0 to 30
   myDFPlayer.play(songBootUp);  //Play the first mp3
-}                                                       //////
+}
 
-void loop() {                                           //////
+void loop() {  
+  BTHC06.listen();
+  readBT();
+
+  //mySoftwareSerial.listen(); // on n'a pas besoin des infos en provenance du player !
   if (wrongStartSequence > 0) {
     // Séquence de Faux départ
     wrongStartSequenceWatch();
@@ -125,7 +143,7 @@ void loop() {                                           //////
     if (btnState == LOW && previousBtnState != LOW) {
       if (startSequence > 0) {
         // Sequence de départ en cours, on annule la course
-        Serial.println("Course annulée");
+        logInfo("Course annulée", true);
         resetStartSequence();
       } else {
         // Lancement de la course
@@ -152,11 +170,31 @@ void loop() {                                           //////
   if ( carID < 8 ) {                                    // real car ID's are always smaler then 8
     // Serial.println( carID, DEC );                       // print ID to serial
     computeLapStat(carID);
-    Serial.println(drivers[driversPlayers[carID]] + " vient de passer\n");
+    logInfo(drivers[driversPlayers[carID]] + " vient de passer\n", true);
     
     carID = 99;                                         // set ID to unreal level
   }
-}                                                       //////
+}      
+/**
+ * 
+ */
+ void readBT() {
+  while(BTHC06.available() > 0) {
+    logInfo("Données en provenance du BT : ", false);
+    String trame = BTHC06.readString();
+    logInfo(trame, true);
+    if (trame == "&start=1") {
+      // Lancement de la course
+      resetStartSequence();
+      startSequence = 1;
+      startSequenceBegin = millis();
+    }
+  }
+
+  if (Serial.available()){
+    BTHC06.write(Serial.read());
+  }
+}
 
 void infraredDetect() {                                 //////
   currentMicros = micros();                             // save current runtime
@@ -186,8 +224,8 @@ void infraredDetect() {                                 //////
 void startSequenceWatch() {
   if (startSequence > 0) {
     if (startSequence == 1) {
-      Serial.println("Allumage des feux !");
-      Serial.println("Début de la course dans 8.5s");
+      logInfo("Allumage des feux !", true);
+      logInfo("Début de la course dans 8.5s", true);
       myDFPlayer.play(songStartRace);  //Play the first mp3
       digitalWrite(startLine[RED1], HIGH);
       digitalWrite(startLine[RED2], HIGH);
@@ -239,10 +277,11 @@ void resetStartSequence() {
 */
 void wrongStartSequenceWatch() {
   if (wrongStartSequence == 1) {
-    Serial.println("!! FAUX DEPART de " + drivers[driversPlayers[wrongStartCar]] + " !!");
+    logInfo("!! FAUX DEPART de " + drivers[driversPlayers[wrongStartCar]] + " !!", true);
     resetStartSequence();
     wrongStartSequence++;
-  } else if (wrongStartSequence < 5) {
+    myDFPlayer.play(songFalseStart);
+  } else if (wrongStartSequence < 7) {
     digitalWrite(startLine[RED1], HIGH);
     digitalWrite(startLine[RED2], HIGH);
     digitalWrite(startLine[RED3], HIGH);
@@ -252,7 +291,7 @@ void wrongStartSequenceWatch() {
     digitalWrite(startLine[RED3], LOW);
     delay(500);
     wrongStartSequence++;
-  } else if (wrongStartSequence >= 5) {
+  } else if (wrongStartSequence >= 7) {
     wrongStartSequence = 0;
     wrongStartCar = 99;
   }
@@ -283,39 +322,39 @@ void computeLapStat(int _carID) {
     lapCount[_carID]++;
 
     if (lapCount[_carID] - 1 == 0) {
-      Serial.println(drivers[driversPlayers[_carID]] + " commence la course");
+      logInfo(drivers[driversPlayers[_carID]] + " commence la course", true);
     } else {
       unsigned long now = millis();
       unsigned long lapTime = now - (lastLaps[_carID] > 0 ? lastLaps[_carID] : raceStartTime);
       lastLaps[_carID]    = now;
       totalTime[_carID]   = now - raceStartTime; // Actualisation du temps total
-      Serial.print("Temps perso au tour : ");
-      Serial.println(getHumanTime(lapTime));
+      logInfo("Temps perso au tour : ", false);
+      logInfo(getHumanTime(lapTime), true);
       
       if (lapTime < bestLaps[_carID] || bestLaps[_carID] == 0) {
         // Meilleur temps au tour
         bestLaps[_carID] = lapTime;
-        Serial.println("Meilleur temps perso au tour !! ");
+        logInfo("Meilleur temps perso au tour !! ", true);
         if (lapTime < raceBestLap || raceBestLap == 0) {
           // Meilleur temps global au tour
-          Serial.println("Meilleur temps général au tour");
+          logInfo("Meilleur temps général au tour", true);
           raceBestLap = lapTime;
         }
       }
 
       if (lapCount[_carID] - 1 == raceLaps) {
         addToRanking(_carID);
-        Serial.println(drivers[driversPlayers[_carID]] + " a terminé la course !!!!");
-        Serial.print("Temps total : ");
-        Serial.println(getHumanTime(lastLaps[_carID]));
+        logInfo(drivers[driversPlayers[_carID]] + " a terminé la course !!!!", true);
+        logInfo("Temps total : ", false);
+        logInfo(getHumanTime(lastLaps[_carID]), true);
         showRanking();
         finishLineSequence = 1;
         myDFPlayer.play(songFinishLine);  //Play the last lap jingle
       } else if (lapCount[_carID] - 1 == raceLaps - 1) {
-        Serial.println(drivers[driversPlayers[_carID]] + " attaque son dernier tour !");
+        logInfo(drivers[driversPlayers[_carID]] + " attaque son dernier tour !", true);
         myDFPlayer.play(songLastLap);  //Play the last lap jingle
       } else {
-        Serial.println(drivers[driversPlayers[_carID]] + " vient de terminer son tour N°" + (lapCount[_carID] - 1));
+        logInfo(drivers[driversPlayers[_carID]] + " vient de terminer son tour N°" + (lapCount[_carID] - 1), true);
         myDFPlayer.play(driversVoices[driversPlayers[_carID]][random(0, 3)]);
       }
     }
@@ -326,22 +365,22 @@ void addToRanking(int _carID) {
   for (int i=0 ; i < maxDrivers ; i++){
     if (!ranking[i]) {
         ranking[i] = _carID;
-        Serial.println(ranking[i]);
-        Serial.println(driversPlayers[ranking[i]]);
+        logInfo((String)ranking[i], true);
+        logInfo((String)driversPlayers[ranking[i]], true);
         break;
     }
   }
 }
 
 void showRanking(){
-  Serial.println("######################################");
+  logInfo("######################################", true);
   for (int i=0 ; i < maxDrivers ; i++){
     if (ranking[i]) {
-        Serial.print("Position " + (String)(i+1) + " : ");
-        Serial.println(drivers[driversPlayers[ranking[i]]]);
+        logInfo("Position " + (String)(i+1) + " : ", false);
+        logInfo(drivers[driversPlayers[ranking[i]]], true);
     }
   }
-  Serial.println("######################################");
+  logInfo("######################################", true);
 }
 
 /**
@@ -354,6 +393,16 @@ String getHumanTime(long unsigned timestamp) {
   
 
   return (mins > 0 && mins < 10 ? "0" : "") + (mins > 0 ? (String)mins + ":" : "") + (secs < 10 ? "0" : "") + (String)secs + "." + (String)msecs +"'";
+}
+
+void logInfo(String message, bool br) {
+  if (debug) {
+    if (br) {
+      Serial.println(message);
+    } else {
+      Serial.print(message);
+    }
+  }
 }
 /*
    End of carrera arduino infrared car detector
