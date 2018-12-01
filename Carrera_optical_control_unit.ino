@@ -175,19 +175,38 @@ void loop() {
     carID = 99;                                         // set ID to unreal level
   }
 }      
+
 /**
  * 
  */
  void readBT() {
   while(BTHC06.available() > 0) {
     logInfo("Données en provenance du BT : ", false);
-    String trame = BTHC06.readString();
-    logInfo(trame, true);
-    if (trame == "&start=1") {
-      // Lancement de la course
-      resetStartSequence();
-      startSequence = 1;
-      startSequenceBegin = millis();
+    String incomingString = BTHC06.readString();
+    logInfo(incomingString, true);
+    
+    // On divise la trame reçue en commandes
+    char incomingChar[incomingString.length()+1];
+    incomingString.toCharArray(incomingChar, incomingString.length()+1);
+    char * command = strtok(incomingChar, "&");
+
+    while(command != 0) {
+      char * valueCommand = strchr(command, '=');
+      if (valueCommand != 0) {
+        *valueCommand = 0;
+        ++valueCommand;
+        if (String(command) == "start"){
+          // Lancement de la course
+          resetStartSequence();
+          startSequence = 1;
+          startSequenceBegin = millis();
+        }else if (String(command) == "laps"){
+          raceLaps = atoi(valueCommand);
+        } else {
+          logInfo("Commande inconnue : " + String(command), true);
+        }
+      }
+      command = strtok(0, "&");
     }
   }
 
@@ -225,7 +244,7 @@ void startSequenceWatch() {
   if (startSequence > 0) {
     if (startSequence == 1) {
       logInfo("Allumage des feux !", true);
-      logInfo("Début de la course dans 8.5s", true);
+      logInfo("Début de la course de " + String(raceLaps)+" tours dans 8.5s", true);
       myDFPlayer.play(songStartRace);  //Play the first mp3
       digitalWrite(startLine[RED1], HIGH);
       digitalWrite(startLine[RED2], HIGH);
@@ -320,6 +339,8 @@ void finishLineSequenceWatch() {
 void computeLapStat(int _carID) {
   if (_carID < 8) {
     lapCount[_carID]++;
+
+    logInfo("nombre de tours total : " + String(raceLaps), true);
 
     if (lapCount[_carID] - 1 == 0) {
       logInfo(drivers[driversPlayers[_carID]] + " commence la course", true);
