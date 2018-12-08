@@ -126,7 +126,7 @@ void setup() {                                          //////
   // BT
   BTHC06.begin(9600);
   
-  myDFPlayer.volume(5);  //Set volume value. From 0 to 30
+  myDFPlayer.volume(25);  //Set volume value. From 0 to 30
   myDFPlayer.play(songBootUp);  //Play the first mp3
 }
 
@@ -201,6 +201,7 @@ void loop() {
           startSequence = 1;
           startSequenceBegin = millis();
         }else if (String(command) == "laps"){
+          // Changement du nombre de tour
           raceLaps = atoi(valueCommand);
         } else {
           logInfo("Commande inconnue : " + String(command), true);
@@ -266,6 +267,7 @@ void startSequenceWatch() {
       digitalWrite(startLine[GO], HIGH);
       raceStartTime = millis();
       startSequence = 6;
+      BTHC06.write("start_race=1");
     } else if (startSequence == 6 && millis() - startSequenceBegin > 8500) {
       resetStartSequence();
     }
@@ -300,6 +302,7 @@ void wrongStartSequenceWatch() {
     resetStartSequence();
     wrongStartSequence++;
     myDFPlayer.play(songFalseStart);
+    BTHC06.write("wrongstart");
   } else if (wrongStartSequence < 7) {
     digitalWrite(startLine[RED1], HIGH);
     digitalWrite(startLine[RED2], HIGH);
@@ -370,6 +373,7 @@ void computeLapStat(int _carID) {
         logInfo(getHumanTime(lastLaps[_carID]), true);
         showRanking();
         finishLineSequence = 1;
+        BTHC06.write("raceover");
         myDFPlayer.play(songFinishLine);  //Play the last lap jingle
       } else if (lapCount[_carID] - 1 == raceLaps - 1) {
         logInfo(drivers[driversPlayers[_carID]] + " attaque son dernier tour !", true);
@@ -378,6 +382,12 @@ void computeLapStat(int _carID) {
         logInfo(drivers[driversPlayers[_carID]] + " vient de terminer son tour N°" + (lapCount[_carID] - 1), true);
         myDFPlayer.play(driversVoices[driversPlayers[_carID]][random(0, 3)]);
       }
+// + "|" + String(lapCount[_carID]) + "|" + String(lastLaps[_carID])
+      //BTHC06.write("new_lap=" + (String)_carID);
+      String trame = ("new_lap=" + (String)_carID + "|" + String(lapCount[_carID]) + "|" + String(lastLaps[_carID]));
+      char ctrame[50]; 
+      trame.toCharArray(ctrame, 50);
+      BTHC06.write(ctrame);
     }
   }
 }
